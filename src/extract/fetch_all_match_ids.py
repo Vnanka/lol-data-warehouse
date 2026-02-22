@@ -11,7 +11,7 @@ if not API_KEY:
     raise RuntimeError("RIOT_API_KEY not set")
 
 PUUID_FILE = "data/raw/puuid.json"
-OUT_FILE = "data/raw/match_ids_all.json"
+OUT_FILE = "data/raw/match_ids.json"
 
 with open(PUUID_FILE, "r", encoding="utf-8") as f:
     puuid = json.load(f)["puuid"]

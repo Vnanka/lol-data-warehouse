@@ -13,7 +13,7 @@ if not api_key:
 headers = {"X-Riot-Token": api_key}
 
 # Read match IDs from file
-with open("data/raw/match_ids_latest.json", "r", encoding="utf-8") as f:
+with open("data/raw/match_ids.json", "r", encoding="utf-8") as f:
     match_ids = json.load(f)
 
 os.makedirs("data/raw/matches", exist_ok=True)
