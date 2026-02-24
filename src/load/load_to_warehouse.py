@@ -256,10 +256,11 @@ def upsert_fact_participant(conn: sqlite3.Connection, df: pd.DataFrame) -> None:
             vision_score,
             role,
             team_position,
+            individual_position,
             lane,
             time_played_sec
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     for _, row in df.iterrows():
@@ -286,6 +287,7 @@ def upsert_fact_participant(conn: sqlite3.Connection, df: pd.DataFrame) -> None:
                 int(row["vision_score"]) if not pd.isna(row["vision_score"]) else None,
                 row["role"],
                 row["teamPosition"],
+                row["individualPosition"],
                 row["lane"],
                 int(row["time_played_sec"]) if not pd.isna(row["time_played_sec"]) else None,
             ),

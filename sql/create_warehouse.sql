@@ -8,7 +8,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS dim_summoner (
     summoner_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    puuid           TEXT NOT NULL UNIQUE,€
+    puuid           TEXT NOT NULL UNIQUE,
     summoner_name   TEXT,
     last_seen_at    TEXT          -- ISO datetime of latest match we saw
 );
@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS fact_participant (
     vision_score            INTEGER,
     role                    TEXT,
     team_position           TEXT,
+    individual_position     TEXT,
     lane                    TEXT,
     time_played_sec         INTEGER,
 

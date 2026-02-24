@@ -30,6 +30,7 @@ FIELDS = [
     "vision_score",
     "role",
     "teamPosition",
+    "individualPosition",
     "lane"
 ]
 
@@ -71,6 +72,7 @@ for filename in os.listdir(MATCH_DIR):
             "vision_score": p.get("visionScore"),
             "role": p.get("role"),
             "teamPosition": p.get("teamPosition"),
+            "individualPosition": p.get("teamPosition"),
             "lane": p.get("lane")
         }
         rows.append(row)
