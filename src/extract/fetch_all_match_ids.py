@@ -10,11 +10,11 @@ API_KEY = os.getenv("RIOT_API_KEY")
 if not API_KEY:
     raise RuntimeError("RIOT_API_KEY not set")
 
-PUUID_FILE = "data/raw/puuid.json"
-OUT_FILE = "data/raw/match_ids.json"
+puuid = os.getenv("PUUID")
+if not puuid:
+    raise RuntimeError("PUIID not set")
 
-with open(PUUID_FILE, "r", encoding="utf-8") as f:
-    puuid = json.load(f)["puuid"]
+OUT_FILE = "data/raw/match_ids.json"
 
 REGION_ROUTING = "europe"  # because your account is EUW
 BASE_URL = f"https://{REGION_ROUTING}.api.riotgames.com"
