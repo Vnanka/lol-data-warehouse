@@ -63,7 +63,8 @@ def load_stg_participants() -> pd.DataFrame:
         "total_minions_killed",
         "vision_score",
         "role",
-        "teamPosition",
+        "team_position",
+        "individual_position",
         "lane",
     }
     missing = expected - set(df.columns)
@@ -286,8 +287,8 @@ def upsert_fact_participant(conn: sqlite3.Connection, df: pd.DataFrame) -> None:
                 int(row["cs"]) if not pd.isna(row["cs"]) else None,
                 int(row["vision_score"]) if not pd.isna(row["vision_score"]) else None,
                 row["role"],
-                row["teamPosition"],
-                row["individualPosition"],
+                row["team_position"],
+                row["individual_position"],
                 row["lane"],
                 int(row["time_played_sec"]) if not pd.isna(row["time_played_sec"]) else None,
             ),

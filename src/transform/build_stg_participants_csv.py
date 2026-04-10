@@ -1,13 +1,13 @@
 import json
-import os
 import csv
+from pathlib import Path
 
-MATCH_DIR = "data/raw/matches"
-OUT_FILE = "data/stg/stg_participants.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_MATCH_DIR = PROJECT_ROOT / "data" / "raw" / "matches"
+DEFAULT_OUT_FILE = PROJECT_ROOT / "data" / "stg" / "stg_participants.csv"
 
-os.makedirs("data/stg", exist_ok=True)
-
-# Columns we want in the staging table
+# Columns to extract into the staging table.
+# This list also controls the column order in the CSV.
 FIELDS = [
     "match_id",
     "game_creation",
@@ -29,58 +29,71 @@ FIELDS = [
     "total_minions_killed",
     "vision_score",
     "role",
-    "teamPosition",
-    "individualPosition",
-    "lane"
+    "team_position",
+    "individual_position",
+    "lane",
 ]
 
-rows = []
 
-for filename in os.listdir(MATCH_DIR):
-    if not filename.endswith(".json"):
-        continue
+def build_stg_participants(
+    match_dir: Path = DEFAULT_MATCH_DIR,
+    out_file: Path = DEFAULT_OUT_FILE,
+) -> None:
+    """
+    Reads all raw match JSON files and extracts one row per participant.
+    Writes the result to a staging CSV file.
 
-    match_id = filename.replace(".json", "")
-    path = os.path.join(MATCH_DIR, filename)
+    Parameters:
+        match_dir - directory containing raw match JSON files
+        out_file  - path to write the output CSV
+    """
+    out_file.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(path, "r", encoding="utf-8") as f:
-        match = json.load(f)
+    rows = []
 
-    info = match.get("info", {})
-    # metadata = match.get("metadata", {})  # for later if we need
+    for path in match_dir.glob("*.json"):
+        match_id = path.stem  # filename without the .json extension
 
-    for p in info.get("participants", []):
-        row = {
-            "match_id": match_id,
-            "game_creation": info.get("gameCreation"),
-            "game_duration": info.get("gameDuration"),
-            "queue_id": info.get("queueId"),
-            "game_version": info.get("gameVersion"),
-            "platform_id": info.get("platformId"),
-            "participant_puuid": p.get("puuid"),
-            "summoner_name": p.get("summonerName"),
-            "champion_id": p.get("championId"),
-            "champion_name": p.get("championName"),
-            "team_id": p.get("teamId"),
-            "win": p.get("win"),
-            "kills": p.get("kills"),
-            "deaths": p.get("deaths"),
-            "assists": p.get("assists"),
-            "total_damage_to_champions": p.get("totalDamageDealtToChampions"),
-            "gold_earned": p.get("goldEarned"),
-            "total_minions_killed": p.get("totalMinionsKilled"),
-            "vision_score": p.get("visionScore"),
-            "role": p.get("role"),
-            "teamPosition": p.get("teamPosition"),
-            "individualPosition": p.get("teamPosition"),
-            "lane": p.get("lane")
-        }
-        rows.append(row)
+        with open(path, "r", encoding="utf-8") as f:
+            match = json.load(f)
 
-# Write CSV
-with open(OUT_FILE, "w", newline="", encoding="utf-8") as f:
-    writer = csv.DictWriter(f, fieldnames=FIELDS)
-    writer.writeheader()
-    writer.writerows(rows)
+        info = match.get("info", {})
 
-print(f"Wrote {len(rows)} rows to {OUT_FILE}")
+        for p in info.get("participants", []):
+            row = {
+                "match_id": match_id,
+                "game_creation": info.get("gameCreation"),
+                "game_duration": info.get("gameDuration"),
+                "queue_id": info.get("queueId"),
+                "game_version": info.get("gameVersion"),
+                "platform_id": info.get("platformId"),
+                "participant_puuid": p.get("puuid"),
+                "summoner_name": p.get("summonerName"),
+                "champion_id": p.get("championId"),
+                "champion_name": p.get("championName"),
+                "team_id": p.get("teamId"),
+                "win": p.get("win"),
+                "kills": p.get("kills"),
+                "deaths": p.get("deaths"),
+                "assists": p.get("assists"),
+                "total_damage_to_champions": p.get("totalDamageDealtToChampions"),
+                "gold_earned": p.get("goldEarned"),
+                "total_minions_killed": p.get("totalMinionsKilled"),
+                "vision_score": p.get("visionScore"),
+                "role": p.get("role"),
+                "team_position": p.get("teamPosition"),
+                "individual_position": p.get("individualPosition"),
+                "lane": p.get("lane"),
+            }
+            rows.append(row)
+
+    with open(out_file, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Wrote {len(rows)} rows to {out_file}")
+
+
+if __name__ == "__main__":
+    build_stg_participants()
