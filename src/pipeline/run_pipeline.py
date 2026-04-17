@@ -30,6 +30,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # Now we can import our functions using their module paths
+from extract.fetch_champion_data import fetch_champion_data
+from extract.fetch_queue_data import fetch_queue_data
+from extract.fetch_champion_mastery import fetch_champion_mastery
 from extract.fetch_all_match_ids import fetch_match_ids
 from extract.fetch_match_details import fetch_match_details
 from transform.build_stg_participants_csv import build_stg_participants
@@ -57,6 +60,15 @@ def run_pipeline(skip_extract: bool = False) -> None:
     # EXTRACT — pull data from Riot API
     # -----------------------------------------------------------------------
     if not skip_extract:
+        print("\n=== EXTRACT: Fetching champion data from Data Dragon ===")
+        fetch_champion_data()
+
+        print("\n=== EXTRACT: Fetching queue data from Riot static ===")
+        fetch_queue_data()
+
+        print("\n=== EXTRACT: Fetching champion mastery ===")
+        fetch_champion_mastery(puuid)
+
         print("\n=== EXTRACT: Fetching match IDs ===")
         fetch_match_ids(puuid)
 

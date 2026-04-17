@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS dim_summoner (
 
 CREATE TABLE IF NOT EXISTS dim_champion (
     champion_id     INTEGER PRIMARY KEY,
-    champion_name   TEXT
+    champion_name   TEXT,
+    champion_key    TEXT,
+    title           TEXT,
+    tags            TEXT
 );
 
 CREATE TABLE IF NOT EXISTS dim_queue (
@@ -125,4 +128,20 @@ CREATE TABLE IF NOT EXISTS fact_participant (
     FOREIGN KEY (match_id)    REFERENCES dim_match(match_id),
     FOREIGN KEY (summoner_id) REFERENCES dim_summoner(summoner_id),
     FOREIGN KEY (champion_id) REFERENCES dim_champion(champion_id)
+);
+
+CREATE TABLE IF NOT EXISTS fact_champion_mastery (
+    puuid                       TEXT NOT NULL,
+    champion_id                 INTEGER NOT NULL,
+    champion_level              INTEGER,
+    champion_points             INTEGER,
+    last_play_time              TEXT,
+    points_since_last_level     INTEGER,
+    points_until_next_level     INTEGER,
+    chest_granted               INTEGER,
+    tokens_earned               INTEGER,
+    fetched_at                  TEXT NOT NULL,
+    PRIMARY KEY (puuid, champion_id),
+    FOREIGN KEY (puuid)        REFERENCES dim_summoner(puuid),
+    FOREIGN KEY (champion_id)  REFERENCES dim_champion(champion_id)
 );
