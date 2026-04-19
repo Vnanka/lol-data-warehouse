@@ -1,0 +1,4 @@
+# dbt artefacts — regenerated on every run, never commit
+target/
+dbt_packages/
+logs/

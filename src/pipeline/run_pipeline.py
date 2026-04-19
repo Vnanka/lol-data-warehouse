@@ -1,55 +1,100 @@
 """
-run_pipeline.py — the single entry point for the LoL data warehouse pipeline.
+run_pipeline.py — single entry point for the LoL data warehouse pipeline.
+
+Architecture (post-dbt refactor):
+
+    ┌──────────┐    ┌───────────┐    ┌──────────┐    ┌──────────┐
+    │ EXTRACT  │ →  │ TRANSFORM │ →  │ LOAD RAW │ →  │   DBT    │
+    │ (Python) │    │ (Python)  │    │ (Python) │    │  build   │
+    └──────────┘    └───────────┘    └──────────┘    └──────────┘
+      Riot API         JSON → CSV       files →          raw →
+      → files          flatten          DuckDB raw      staging → marts
 
 Usage:
-    # Run the full pipeline (extract + transform + load):
+    # Full pipeline (Riot API → warehouse):
     python src/pipeline/run_pipeline.py
 
-    # Skip the API calls (use existing raw data — faster for development):
+    # Re-run without re-hitting the API (uses data already on disk):
     python src/pipeline/run_pipeline.py --skip-extract
 
-How it works:
-    1. Loads .env so all scripts can read API keys / PUUID
-    2. Imports functions from each stage
-    3. Calls them in order: extract → transform → load
+    # Skip dbt (Python load only) — useful when iterating on extract/transform:
+    python src/pipeline/run_pipeline.py --skip-dbt
+
+    # Only run dbt (skip everything Python):
+    python src/pipeline/run_pipeline.py --skip-extract --skip-transform --skip-load
 """
 
-import sys
-import os
 import argparse
+import os
+import subprocess
+import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
-# Make Python aware of the src/ folder so our imports work.
-#
-# Without this, Python wouldn't know where to find "extract", "transform", etc.
-# sys.path is the list of directories Python searches when you do `import`.
+# Make Python aware of src/ so our imports resolve.
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-# Now we can import our functions using their module paths
 from extract.fetch_champion_data import fetch_champion_data
 from extract.fetch_queue_data import fetch_queue_data
 from extract.fetch_champion_mastery import fetch_champion_mastery
 from extract.fetch_all_match_ids import fetch_match_ids
 from extract.fetch_match_details import fetch_match_details
 from transform.build_stg_participants_csv import build_stg_participants
-from transform.build_stg_my_games_csv import build_stg_my_games
-from load.load_to_warehouse import main as load_warehouse
+from load.load_raw import load_raw
 
 
-def run_pipeline(skip_extract: bool = False) -> None:
+DBT_DIR = PROJECT_ROOT / "dbt"
+
+
+def _find_dbt_executable() -> str:
     """
-    Runs the full ETL pipeline in order.
+    Locate the dbt executable that belongs to the *current* Python interpreter.
 
-    Parameters:
-        skip_extract - if True, skips the Riot API calls and uses
-                       whatever raw data is already on disk.
-                       Useful during development so you don't burn API rate limits.
+    Using a bare "dbt" on PATH is fragile on Windows — the script may be
+    launched from a context where the venv isn't activated (scheduled task,
+    IDE run button). Resolving dbt via sys.executable's Scripts/ folder
+    guarantees we use the dbt installed in the same venv as this script.
     """
-    # Load .env once here — all functions will be able to read env vars after this
+    python_dir = Path(sys.executable).parent
+    candidate = python_dir / ("dbt.exe" if os.name == "nt" else "dbt")
+    if candidate.exists():
+        return str(candidate)
+    # Fallback: trust PATH (Linux/macOS with a system-wide install).
+    return "dbt"
+
+
+def run_dbt_build() -> None:
+    """Invoke `dbt build` — runs all models AND tests in dependency order."""
+    dbt_exe = _find_dbt_executable()
+    cmd = [
+        dbt_exe, "build",
+        "--project-dir", str(DBT_DIR),
+        "--profiles-dir", str(DBT_DIR),
+    ]
+    print(f"  Running: {' '.join(cmd)}")
+    try:
+        # cwd=DBT_DIR so the relative `path:` in profiles.yml
+        # (../data/warehouse/lol_dw.duckdb) resolves correctly regardless
+        # of where the pipeline is invoked from.
+        subprocess.run(cmd, cwd=str(DBT_DIR), check=True)
+    except FileNotFoundError:
+        raise RuntimeError(
+            "`dbt` not found. Activate the venv and install requirements:\n"
+            "    pip install -r requirements.txt\n"
+            "Then verify with: dbt --version"
+        )
+
+
+def run_pipeline(
+    skip_extract: bool = False,
+    skip_transform: bool = False,
+    skip_load: bool = False,
+    skip_dbt: bool = False,
+) -> None:
     load_dotenv()
 
     puuid = os.getenv("PUUID")
@@ -57,55 +102,67 @@ def run_pipeline(skip_extract: bool = False) -> None:
         raise RuntimeError("PUUID not set in .env — run fetch_puuid.py first to find it")
 
     # -----------------------------------------------------------------------
-    # EXTRACT — pull data from Riot API
+    # 1. EXTRACT — pull data from Riot API onto disk
     # -----------------------------------------------------------------------
     if not skip_extract:
-        print("\n=== EXTRACT: Fetching champion data from Data Dragon ===")
+        print("\n=== EXTRACT: Champion data (Data Dragon) ===")
         fetch_champion_data()
 
-        print("\n=== EXTRACT: Fetching queue data from Riot static ===")
+        print("\n=== EXTRACT: Queue data (Riot static) ===")
         fetch_queue_data()
 
-        print("\n=== EXTRACT: Fetching champion mastery ===")
+        print("\n=== EXTRACT: Champion mastery ===")
         fetch_champion_mastery(puuid)
 
-        print("\n=== EXTRACT: Fetching match IDs ===")
+        print("\n=== EXTRACT: Match IDs ===")
         fetch_match_ids(puuid)
 
-        print("\n=== EXTRACT: Fetching match details ===")
+        print("\n=== EXTRACT: Match details ===")
         fetch_match_details()
     else:
-        print("\n=== EXTRACT: Skipped (--skip-extract flag set) ===")
+        print("\n=== EXTRACT: skipped ===")
 
     # -----------------------------------------------------------------------
-    # TRANSFORM — parse raw JSON into clean staging CSVs
+    # 2. TRANSFORM — flatten raw match JSONs into a wide CSV
     # -----------------------------------------------------------------------
-    print("\n=== TRANSFORM: Building stg_participants ===")
-    build_stg_participants()
-
-    print("\n=== TRANSFORM: Building stg_my_games ===")
-    build_stg_my_games(puuid)
+    if not skip_transform:
+        print("\n=== TRANSFORM: stg_participants.csv ===")
+        build_stg_participants()
+    else:
+        print("\n=== TRANSFORM: skipped ===")
 
     # -----------------------------------------------------------------------
-    # LOAD — push staging data into the SQLite warehouse
+    # 3. LOAD RAW — land files into DuckDB raw.* tables (no business logic)
     # -----------------------------------------------------------------------
-    print("\n=== LOAD: Loading into warehouse ===")
-    load_warehouse()
+    if not skip_load:
+        print("\n=== LOAD RAW: files → DuckDB raw.* ===")
+        load_raw()
+    else:
+        print("\n=== LOAD RAW: skipped ===")
 
-    print("\n=== Pipeline complete! ===")
+    # -----------------------------------------------------------------------
+    # 4. DBT — build staging + marts and run tests in one command
+    # -----------------------------------------------------------------------
+    if not skip_dbt:
+        print("\n=== DBT: build + test ===")
+        run_dbt_build()
+    else:
+        print("\n=== DBT: skipped ===")
+
+    print("\n=== Pipeline complete ===")
 
 
-# ---------------------------------------------------------------------------
-# Argument parsing — this lets you pass flags from the command line.
-# `argparse` is Python's built-in library for this.
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LoL Data Warehouse Pipeline")
-    parser.add_argument(
-        "--skip-extract",
-        action="store_true",  # means: if the flag is present, set to True
-        help="Skip Riot API calls and use existing raw data",
-    )
+    parser = argparse.ArgumentParser(description="LoL Data Warehouse pipeline")
+    parser.add_argument("--skip-extract",   action="store_true", help="Skip Riot API calls")
+    parser.add_argument("--skip-transform", action="store_true", help="Skip JSON→CSV flatten")
+    parser.add_argument("--skip-load",      action="store_true", help="Skip DuckDB raw load")
+    parser.add_argument("--skip-dbt",       action="store_true", help="Skip `dbt build`")
     args = parser.parse_args()
 
-    run_pipeline(skip_extract=args.skip_extract)
+    run_pipeline(
+        skip_extract=args.skip_extract,
+        skip_transform=args.skip_transform,
+        skip_load=args.skip_load,
+        skip_dbt=args.skip_dbt,
+    )

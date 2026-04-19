@@ -1,0 +1,39 @@
+# dbt_project.yml
+# -----------------------------------------------------------------------------
+# This file configures the dbt project. dbt CLI reads it to know where models
+# live, how they should be materialized, and which profile (connection) to use.
+# -----------------------------------------------------------------------------
+
+name: 'lol_dw'
+version: '1.0.0'
+config-version: 2
+
+# Must match an entry in profiles.yml
+profile: 'lol_dw'
+
+# Standard dbt folder layout
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+# `dbt clean` deletes these directories (safe to nuke; regenerated on next run)
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# -----------------------------------------------------------------------------
+# Materialization strategy
+# -----------------------------------------------------------------------------
+# Staging models are cheap to rebuild and we want them always fresh, so views.
+# Marts (dims, facts, analytics marts) are materialized as tables so downstream
+# queries (dashboards, notebooks) are fast.
+# -----------------------------------------------------------------------------
+models:
+  lol_dw:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

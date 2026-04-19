@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: stg_participants
+    description: "Cleaned participant-level rows. Grain: one row per (match, participant)."
+    columns:
+      - name: match_id
+        description: "Riot match identifier (e.g. EUW1_7512349837)."
+        tests:
+          - not_null
+      - name: puuid
+        description: "Player unique ID from Riot. Joins to dim_summoner."
+        tests:
+          - not_null
+      - name: champion_id
+        description: "Champion played. Joins to dim_champion."
+        tests:
+          - not_null
+      - name: win
+        description: "1 if participant's team won, 0 if lost."
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+
+  - name: stg_matches
+    description: "One row per match — derived from stg_participants."
+    columns:
+      - name: match_id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_champions
+    description: "Champion master data from Data Dragon."
+    columns:
+      - name: champion_id
+        tests:
+          - unique
+          - not_null
+      - name: champion_name
+        tests:
+          - not_null
+
+  - name: stg_queues
+    description: "Queue master data from Riot static endpoint."
+    columns:
+      - name: queue_id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_champion_mastery
+    description: "Per-(puuid, champion) mastery snapshot."
+    columns:
+      - name: puuid
+        tests:
+          - not_null
+      - name: champion_id
+        tests:
+          - not_null

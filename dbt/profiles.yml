@@ -1,0 +1,20 @@
+# profiles.yml
+# -----------------------------------------------------------------------------
+# dbt uses this to know HOW to connect to the warehouse.
+#
+# By default dbt looks for this file at ~/.dbt/profiles.yml. We keep it in the
+# project instead (so it's version-controlled alongside the models) and point
+# dbt at it via the --profiles-dir flag. See run_pipeline.py for the invocation.
+#
+# Safe to commit: this file contains no secrets — DuckDB is a local file.
+# -----------------------------------------------------------------------------
+
+lol_dw:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Path is resolved relative to the dbt project dir (i.e. this folder).
+      # Puts the warehouse at <repo>/data/warehouse/lol_dw.duckdb.
+      path: "../data/warehouse/lol_dw.duckdb"
+      threads: 4

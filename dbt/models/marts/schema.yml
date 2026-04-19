@@ -1,0 +1,131 @@
+version: 2
+
+models:
+  # ── Dimensions ─────────────────────────────────────────────────────
+  - name: dim_summoner
+    description: "One row per unique summoner. PK = puuid."
+    columns:
+      - name: puuid
+        description: "Unique player ID from Riot. Natural primary key."
+        tests:
+          - unique
+          - not_null
+      - name: riot_id
+        description: "Formatted '<gameName>#<tagLine>'. Changes when player renames."
+      - name: summoner_name
+        description: "Legacy summoner name (deprecated by Riot but still populated)."
+      - name: last_seen_at
+        description: "Timestamp of the most recent event (match OR mastery snapshot) we've recorded."
+
+  - name: dim_champion
+    description: "Champion master data from Data Dragon."
+    columns:
+      - name: champion_id
+        description: "Numeric champion ID used throughout Riot's match data."
+        tests:
+          - unique
+          - not_null
+      - name: champion_name
+        description: "Display name (e.g. 'Aatrox'). Can change across patches — prefer champion_key as a stable slug."
+        tests:
+          - not_null
+      - name: champion_key
+        description: "String slug ('Aatrox'). Stable across renames."
+      - name: title
+      - name: tags
+        description: "Comma-separated role tags (e.g. 'Fighter, Tank')."
+
+  - name: dim_queue
+    description: "Queue (game mode) master data."
+    columns:
+      - name: queue_id
+        tests:
+          - unique
+          - not_null
+      - name: queue_description
+
+  - name: dim_match
+    description: "One row per match. Match-level context only."
+    columns:
+      - name: match_id
+        tests:
+          - unique
+          - not_null
+      - name: queue_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_queue')
+                field: queue_id
+
+  # ── Facts ──────────────────────────────────────────────────────────
+  - name: fact_participant
+    description: "Core performance fact. Grain: one row per (match, participant)."
+    columns:
+      - name: match_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_match')
+                field: match_id
+      - name: puuid
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_summoner')
+                field: puuid
+      - name: champion_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_champion')
+                field: champion_id
+      - name: win
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: kills
+      - name: deaths
+      - name: assists
+
+  - name: fact_champion_mastery
+    description: "Snapshot of each player's mastery progression per champion."
+    columns:
+      - name: puuid
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_summoner')
+                field: puuid
+      - name: champion_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_champion')
+                field: champion_id
+      - name: champion_points
+        description: "Cumulative mastery points earned on this champion."
+
+  # ── Analytics marts ────────────────────────────────────────────────
+  - name: mart_summoner_winrate_by_champion
+    description: "Win rate and averages per (summoner, champion). 'Which champions do I win most with?'"
+    columns:
+      - name: puuid
+        tests:
+          - not_null
+      - name: champion_id
+        tests:
+          - not_null
+      - name: games_played
+        description: "Total matches on this (summoner, champion)."
+        tests:
+          - not_null
+      - name: win_rate
+        description: "wins / games_played. Range [0, 1]."

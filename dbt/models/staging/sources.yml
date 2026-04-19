@@ -1,0 +1,41 @@
+version: 2
+
+# -----------------------------------------------------------------------------
+# Sources — raw landing tables populated by Python (src/load/load_raw.py).
+#
+# These are the *entry points* for the dbt DAG. Every staging model reads from
+# one of these via {{ source('raw', '<name>') }}. Nothing reads directly from
+# files — Python lands files into these tables, dbt takes over from there.
+#
+# Schema: `raw` (created by load_raw.py via CREATE SCHEMA IF NOT EXISTS).
+# -----------------------------------------------------------------------------
+
+sources:
+  - name: raw
+    description: >
+      Raw landing zone populated by src/load/load_raw.py.
+      Shape is close to source API responses — minimal pre-processing.
+    database: lol_dw   # DuckDB: the database name is the filename stem
+    schema: raw
+    tables:
+      - name: participants
+        description: >
+          One row per (match, participant) — flattened from raw match JSONs
+          by src/transform/build_stg_participants_csv.py, then loaded from
+          data/stg/stg_participants.csv as all-VARCHAR.
+
+      - name: champions
+        description: >
+          Champion metadata from Riot Data Dragon. Columns follow Data Dragon
+          naming: `key` (numeric id as string), `id` (slug), `name`, `title`,
+          `tags` (array of strings).
+
+      - name: queues
+        description: >
+          Queue metadata from Riot's static queues endpoint. Columns:
+          `queueId`, `description`, `map`, `notes`.
+
+      - name: champion_mastery
+        description: >
+          Per-(puuid, championId) mastery snapshot from Riot's champion-mastery
+          v4 endpoint. Re-snapshotted on each pipeline run with `fetched_at`.

@@ -1,17 +1,28 @@
-import sqlite3
+"""
+fetch_champion_mastery.py — pull per-(puuid, championId) mastery from Riot.
+
+Writes data/raw/champion_mastery.json — list of mastery entries, each with a
+`fetched_at` ISO timestamp so we know when the snapshot was taken. The API
+shape (camelCase keys, lastPlayTime as epoch-ms) is preserved; conversion to
+snake_case and TIMESTAMP happens in the dbt staging layer.
+"""
+
+import json
 import os
-import requests
 from datetime import datetime, timezone
 from pathlib import Path
+
+import requests
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DB_PATH = PROJECT_ROOT / "data" / "warehouse" / "lol_dw.sqlite"
-PLATFORM_HOST = "https://euw1.api.riotgames.com"
-MASTERY_URL = PLATFORM_HOST + "/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
+PROJECT_ROOT   = Path(__file__).resolve().parents[2]
+OUT_FILE       = PROJECT_ROOT / "data" / "raw" / "champion_mastery.json"
+
+PLATFORM_HOST  = "https://euw1.api.riotgames.com"
+MASTERY_URL    = PLATFORM_HOST + "/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}"
 
 
-def fetch_champion_mastery(puuid: str, db_path: Path = DB_PATH) -> None:
+def fetch_champion_mastery(puuid: str, out_file: Path = OUT_FILE) -> None:
     api_key = os.getenv("RIOT_API_KEY")
     if not api_key:
         raise RuntimeError("RIOT_API_KEY not set in .env")
@@ -27,54 +38,16 @@ def fetch_champion_mastery(puuid: str, db_path: Path = DB_PATH) -> None:
     entries = resp.json()
     print(f"  Champion mastery entries fetched: {len(entries)}")
 
+    # Stamp every row with when we pulled it — lets dbt reason about snapshot freshness.
     fetched_at = datetime.now(timezone.utc).isoformat()
+    for e in entries:
+        e["fetched_at"] = fetched_at
 
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_file, "w", encoding="utf-8") as f:
+        json.dump(entries, f, ensure_ascii=False, indent=2)
 
-    # Ensure the summoner exists in dim_summoner so the FK is satisfied
-    cur.execute(
-        "INSERT INTO dim_summoner (puuid) VALUES (?) ON CONFLICT(puuid) DO NOTHING",
-        (puuid,),
-    )
-
-    cur.executemany(
-        """
-        INSERT INTO fact_champion_mastery (
-            puuid, champion_id, champion_level, champion_points,
-            last_play_time, points_since_last_level, points_until_next_level,
-            chest_granted, tokens_earned, fetched_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(puuid, champion_id) DO UPDATE SET
-            champion_level              = excluded.champion_level,
-            champion_points             = excluded.champion_points,
-            last_play_time              = excluded.last_play_time,
-            points_since_last_level     = excluded.points_since_last_level,
-            points_until_next_level     = excluded.points_until_next_level,
-            chest_granted               = excluded.chest_granted,
-            tokens_earned               = excluded.tokens_earned,
-            fetched_at                  = excluded.fetched_at
-        """,
-        [
-            (
-                e["puuid"],
-                e["championId"],
-                e["championLevel"],
-                e["championPoints"],
-                datetime.fromtimestamp(e["lastPlayTime"] / 1000, tz=timezone.utc).isoformat(),
-                e.get("championPointsSinceLastLevel"),
-                e.get("championPointsUntilNextLevel"),
-                int(e.get("chestGranted", False)),
-                e.get("tokensEarned"),
-                fetched_at,
-            )
-            for e in entries
-        ],
-    )
-
-    conn.commit()
-    conn.close()
-    print(f"  fact_champion_mastery upserted: {len(entries)} rows")
+    print(f"  Wrote {len(entries)} rows → {out_file}")
 
 
 if __name__ == "__main__":
